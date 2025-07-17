@@ -1,9 +1,5 @@
-// 修正：画像数に応じて行ごとに画像を切り替えるようオセロ盤配置ロジックを調整
-
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Stage, Layer, Image as KonvaImage, Rect } from "react-konva";
-import Konva from "konva";
-import { embedDPI } from "./embedDPI";
 
 function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -31,21 +27,24 @@ const defaultPresets = [
 ];
 
 const PatternImageTool: React.FC = () => {
-  const stageRef = useRef<Konva.Stage>(null);
-  const [imageList, setImageList] = useState<HTMLImageElement[]>([]);
+  const [imageA, setImageA] = useState<HTMLImageElement | null>(null);
+  const [imageB, setImageB] = useState<HTMLImageElement | null>(null);
   const [rotations, setRotations] = useState<number[][]>([]);
+  const [loadingA, setLoadingA] = useState(false);
+  const [loadingB, setLoadingB] = useState(false);
   const [backgroundColor, setBackgroundColor] = useState("#ffffff");
-  const [transparent, setTransparent] = useState(false);
   const [rows, setRows] = useState(9);
   const [cols, setCols] = useState(9);
   const [canvasWidth, setCanvasWidth] = useState(720);
   const [canvasHeight, setCanvasHeight] = useState(720);
-  const [dpi, setDpi] = useState(72);
   const [presets, setPresets] = useState<number[][]>(defaultPresets);
   const [selectedPresetIndex, setSelectedPresetIndex] = useState<number | null>(null);
 
   const cellWidth = canvasWidth / cols;
   const cellHeight = canvasHeight / rows;
+
+  const activeImageA = imageA || imageB;
+  const activeImageB = imageB || imageA;
 
   const generateRandomRotations = (): number[][] => {
     const newRotations: number[][] = [];
@@ -61,7 +60,7 @@ const PatternImageTool: React.FC = () => {
 
   useEffect(() => {
     setRotations(generateRandomRotations());
-  }, [rows, cols, imageList]);
+  }, [rows, cols, activeImageA, activeImageB]);
 
   useEffect(() => {
     const stored = localStorage.getItem("pattern_presets");
@@ -77,43 +76,46 @@ const PatternImageTool: React.FC = () => {
     setPresets(updated);
     localStorage.setItem(
       "pattern_presets",
-      JSON.stringify(updated.filter(p => !defaultPresets.some(dp => JSON.stringify(dp) === JSON.stringify(p))))
+      JSON.stringify(
+        updated.filter(
+          (p) =>
+            !defaultPresets.some((dp) => JSON.stringify(dp) === JSON.stringify(p))
+        )
+      )
     );
   };
 
   const deletePreset = (index: number) => {
-    if (index < defaultPresets.length) return;
+    const isDefault = index < defaultPresets.length;
+    if (isDefault) return;
     const updated = presets.filter((_, i) => i !== index);
     setPresets(updated);
     localStorage.setItem(
       "pattern_presets",
-      JSON.stringify(updated.filter(p => !defaultPresets.some(dp => JSON.stringify(dp) === JSON.stringify(p))))
+      JSON.stringify(
+        updated.filter(
+          (p) =>
+            !defaultPresets.some((dp) => JSON.stringify(dp) === JSON.stringify(p))
+        )
+      )
     );
     setSelectedPresetIndex(null);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
+  const handleImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setImage: React.Dispatch<React.SetStateAction<HTMLImageElement | null>>,
+    setLoading: React.Dispatch<React.SetStateAction<boolean>>
+  ) => {
     const file = e.target.files?.[0];
     if (file) {
-      const img = await loadImage(file);
-      setImageList((prev) => {
-        const updated = [...prev];
-        updated[index] = img;
-        return updated;
-      });
-    }
-  };
-
-  const handleDownload = () => {
-    if (stageRef.current) {
-      const baseDataURL = stageRef.current.toDataURL({
-        pixelRatio: 1, // 解像度を変えずに描画
-      });
-      const dataURLWithDPI = embedDPI(baseDataURL, dpi);
-      const link = document.createElement("a");
-      link.download = "pattern.png";
-      link.href = dataURLWithDPI;
-      link.click();
+      setLoading(true);
+      try {
+        const img = await loadImage(file);
+        setImage(img);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -122,67 +124,108 @@ const PatternImageTool: React.FC = () => {
       <h2 className="text-2xl font-semibold mb-4 text-gray-800">画像パターン生成ツール</h2>
 
       <div className="flex flex-wrap gap-4 mb-4 items-center">
-        {[0, 1, 2, 3].map((i) => (
-          <label key={i} className="block">
-            画像{i + 1}:
-            <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, i)} />
-          </label>
-        ))}
-        <label className="block">行数: <input type="number" value={rows} onChange={(e) => setRows(parseInt(e.target.value))} className="border p-1 w-16" /></label>
-        <label className="block">列数: <input type="number" value={cols} onChange={(e) => setCols(parseInt(e.target.value))} className="border p-1 w-16" /></label>
-        <label className="block">幅(px): <input type="number" value={canvasWidth} onChange={(e) => setCanvasWidth(parseInt(e.target.value))} className="border p-1 w-20" /></label>
-        <label className="block">高さ(px): <input type="number" value={canvasHeight} onChange={(e) => setCanvasHeight(parseInt(e.target.value))} className="border p-1 w-20" /></label>
-        <label className="block">DPI: <input type="number" value={dpi} onChange={(e) => setDpi(parseInt(e.target.value))} className="border p-1 w-20" /></label>
-        <label className="block">背景色: <input type="color" value={backgroundColor} disabled={transparent} onChange={(e) => setBackgroundColor(e.target.value)} /></label>
-        <label className="block"><input type="checkbox" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} /> 背景透過</label>
-        <select value={selectedPresetIndex ?? ""} onChange={(e) => {
-          const index = parseInt(e.target.value);
-          const preset = presets[index];
-          if (preset) {
-            setRows(preset[0]);
-            setCols(preset[1]);
-            setCanvasWidth(preset[2]);
-            setCanvasHeight(preset[3]);
+        <label className="flex flex-col text-sm font-medium text-gray-700">
+          画像A
+          <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setImageA, setLoadingA)} />
+        </label>
+        <label className="flex flex-col text-sm font-medium text-gray-700">
+          画像B
+          <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setImageB, setLoadingB)} />
+        </label>
+        <label className="flex flex-col text-sm font-medium text-gray-700">
+          背景色
+          <input type="color" value={backgroundColor} onChange={(e) => setBackgroundColor(e.target.value)} />
+        </label>
+        <label className="flex flex-col text-sm font-medium text-gray-700">
+          行数
+          <input type="number" value={rows} onChange={(e) => setRows(Number(e.target.value))} className="w-20" />
+        </label>
+        <label className="flex flex-col text-sm font-medium text-gray-700">
+          列数
+          <input type="number" value={cols} onChange={(e) => setCols(Number(e.target.value))} className="w-20" />
+        </label>
+        <label className="flex flex-col text-sm font-medium text-gray-700">
+          幅(px)
+          <input type="number" value={canvasWidth} onChange={(e) => setCanvasWidth(Number(e.target.value))} className="w-24" />
+        </label>
+        <label className="flex flex-col text-sm font-medium text-gray-700">
+          高さ(px)
+          <input type="number" value={canvasHeight} onChange={(e) => setCanvasHeight(Number(e.target.value))} className="w-24" />
+        </label>
+        <button
+          onClick={() => setRotations(generateRandomRotations())}
+          className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700"
+        >
+          回転リセット
+        </button>
+        <button
+          onClick={savePreset}
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+        >
+          記憶
+        </button>
+        <select
+          onChange={(e) => {
+            const index = parseInt(e.target.value);
+            const [r, c, w, h] = presets[index];
+            setRows(r);
+            setCols(c);
+            setCanvasWidth(w);
+            setCanvasHeight(h);
             setSelectedPresetIndex(index);
-          }
-        }} className="border p-1">
+          }}
+          className="border px-2 py-1 rounded"
+        >
           <option value="">プリセット選択</option>
-          {presets.map((preset, index) => (
-            <option key={index} value={index}>
-              {preset[0]}×{preset[1]} / {preset[2]}×{preset[3]}px {index < defaultPresets.length ? "(標準)" : "(カスタム)"}
-            </option>
-          ))}
+          {presets.map(([r, c, w, h], i) => {
+            const label = `${r}×${c} / ${w}×${h}px`;
+            const isCustom = i >= defaultPresets.length;
+            return (
+              <option key={i} value={i}>
+                {label} {isCustom ? "(カスタム)" : "(標準)"}
+              </option>
+            );
+          })}
         </select>
-        <button onClick={savePreset} className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">記憶</button>
-        {selectedPresetIndex != null && selectedPresetIndex >= defaultPresets.length && (
-          <button onClick={() => deletePreset(selectedPresetIndex)} className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600">削除</button>
+        {selectedPresetIndex !== null && selectedPresetIndex >= defaultPresets.length && (
+          <button
+            onClick={() => deletePreset(selectedPresetIndex)}
+            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+          >
+            削除
+          </button>
         )}
-        <button onClick={() => setRotations(generateRandomRotations())} className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600">回転リセット</button>
-        <button onClick={handleDownload} className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600">PNG保存</button>
       </div>
 
-      <Stage ref={stageRef} width={canvasWidth} height={canvasHeight} pixelRatio={dpi / 72}>
+      {(loadingA || loadingB) && <div className="text-gray-500 mb-4">画像を読み込み中...</div>}
+
+      <Stage width={canvasWidth} height={canvasHeight}>
         <Layer>
-          {!transparent && (<Rect x={0} y={0} width={canvasWidth} height={canvasHeight} fill={backgroundColor} />)}
+          <Rect x={0} y={0} width={canvasWidth} height={canvasHeight} fill={backgroundColor} />
 
           {[...Array(rows)].map((_, row) =>
             [...Array(cols)].map((_, col) => {
-              const isEvenRow = row % 2 === 0;
               const isEvenCol = col % 2 === 0;
-              const shouldDraw = isEvenRow === isEvenCol;
-              if (!shouldDraw || imageList.length === 0) return null;
-              const rowImageIndex = row % imageList.length;
-              const img = imageList[rowImageIndex];
+              const isOddRow = row % 2 === 0;
+
+              const shouldPlaceA = isEvenCol && isOddRow;
+              const shouldPlaceB = !isEvenCol && !isOddRow;
+
+              const img = shouldPlaceA ? (imageA || imageB) : shouldPlaceB ? (imageB || imageA) : null;
               const rotation = rotations[row]?.[col] || 0;
+
               if (!img) return null;
+
               const aspectRatio = img.width / img.height;
               let targetWidth = cellWidth;
               let targetHeight = cellHeight;
+
               if (aspectRatio > 1) {
                 targetHeight = cellWidth / aspectRatio;
               } else {
                 targetWidth = cellHeight * aspectRatio;
               }
+
               return (
                 <KonvaImage
                   key={`${row}-${col}`}
