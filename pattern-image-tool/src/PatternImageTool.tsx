@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Stage, Layer, Image as KonvaImage, Rect } from "react-konva";
 import Konva from "konva";
-import { embedDPI } from "./embedDPI"; 
+import { embedDPI } from "./embedDPI";
+import "./styles.css";
 
 function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -104,9 +105,7 @@ const PatternImageTool: React.FC = () => {
 
   const handleDownload = () => {
     if (stageRef.current) {
-      const baseDataURL = stageRef.current.toDataURL({
-        pixelRatio: 1, // 解像度を変えずに描画
-      });
+      const baseDataURL = stageRef.current.toDataURL({ pixelRatio: 1 });
       const dataURLWithDPI = embedDPI(baseDataURL, dpi);
       const link = document.createElement("a");
       link.download = "pattern.png";
@@ -116,91 +115,105 @@ const PatternImageTool: React.FC = () => {
   };
 
   return (
-    <div className="p-6 bg-white rounded-xl shadow max-w-6xl mx-auto">
-      <h2 className="text-2xl font-semibold mb-4 text-gray-800">画像パターン生成ツール</h2>
+    <div className="app-wrapper">
+      <h2 className="app-title">画像パターン生成ツール</h2>
+      <div className="container">
+        {/* 左側：プリセット + プレビュー */}
+        <div style={{ flex: 1 }}>
+          <div className="input-group">
+            <select
+              value={selectedPresetIndex ?? ""}
+              onChange={(e) => {
+                const index = parseInt(e.target.value);
+                const preset = presets[index];
+                if (preset) {
+                  setRows(preset[0]);
+                  setCols(preset[1]);
+                  setCanvasWidth(preset[2]);
+                  setCanvasHeight(preset[3]);
+                  setSelectedPresetIndex(index);
+                }
+              }}
+            >
+              <option value="">プリセット選択</option>
+              {presets.map((preset, index) => (
+                <option key={index} value={index}>
+                  {preset[0]}×{preset[1]} / {preset[2]}×{preset[3]}px {index < defaultPresets.length ? "(標準)" : "(カスタム)"}
+                </option>
+              ))}
+            </select>
+            <div className="button-group">
+              <button onClick={savePreset}>プリセット保存</button>
+              {selectedPresetIndex != null && selectedPresetIndex >= defaultPresets.length && (
+                <button onClick={() => deletePreset(selectedPresetIndex)}>削除</button>
+              )}
+              <button onClick={() => setRotations(generateRandomRotations())}>回転リセット</button>
+              <button onClick={handleDownload}>PNG保存</button>
+            </div>
+          </div>
 
-      <div className="flex flex-wrap gap-4 mb-4 items-center">
-        {[0, 1, 2, 3].map((i) => (
-          <label key={i} className="block">
-            画像{i + 1}:
-            <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, i)} />
-          </label>
-        ))}
-        <label className="block">行数: <input type="number" value={rows} onChange={(e) => setRows(parseInt(e.target.value))} className="border p-1 w-16" /></label>
-        <label className="block">列数: <input type="number" value={cols} onChange={(e) => setCols(parseInt(e.target.value))} className="border p-1 w-16" /></label>
-        <label className="block">幅(px): <input type="number" value={canvasWidth} onChange={(e) => setCanvasWidth(parseInt(e.target.value))} className="border p-1 w-20" /></label>
-        <label className="block">高さ(px): <input type="number" value={canvasHeight} onChange={(e) => setCanvasHeight(parseInt(e.target.value))} className="border p-1 w-20" /></label>
-        <label className="block">DPI: <input type="number" value={dpi} onChange={(e) => setDpi(parseInt(e.target.value))} className="border p-1 w-20" /></label>
-        <label className="block">背景色: <input type="color" value={backgroundColor} disabled={transparent} onChange={(e) => setBackgroundColor(e.target.value)} /></label>
-        <label className="block"><input type="checkbox" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} /> 背景透過</label>
-        <select value={selectedPresetIndex ?? ""} onChange={(e) => {
-          const index = parseInt(e.target.value);
-          const preset = presets[index];
-          if (preset) {
-            setRows(preset[0]);
-            setCols(preset[1]);
-            setCanvasWidth(preset[2]);
-            setCanvasHeight(preset[3]);
-            setSelectedPresetIndex(index);
-          }
-        }} className="border p-1">
-          <option value="">プリセット選択</option>
-          {presets.map((preset, index) => (
-            <option key={index} value={index}>
-              {preset[0]}×{preset[1]} / {preset[2]}×{preset[3]}px {index < defaultPresets.length ? "(標準)" : "(カスタム)"}
-            </option>
-          ))}
-        </select>
-        <button onClick={savePreset} className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">記憶</button>
-        {selectedPresetIndex != null && selectedPresetIndex >= defaultPresets.length && (
-          <button onClick={() => deletePreset(selectedPresetIndex)} className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600">削除</button>
-        )}
-        <button onClick={() => setRotations(generateRandomRotations())} className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600">回転リセット</button>
-        <button onClick={handleDownload} className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600">PNG保存</button>
+          <div className="canvas-area">
+            <Stage ref={stageRef} width={canvasWidth} height={canvasHeight} pixelRatio={dpi / 72}>
+              <Layer>
+                {!transparent && (
+                  <Rect x={0} y={0} width={canvasWidth} height={canvasHeight} fill={backgroundColor} />
+                )}
+                {[...Array(rows)].map((_, row) =>
+                  [...Array(cols)].map((_, col) => {
+                    const isEvenRow = row % 2 === 0;
+                    const isEvenCol = col % 2 === 0;
+                    const shouldDraw = isEvenRow === isEvenCol;
+                    if (!shouldDraw || imageList.length === 0) return null;
+                    const rowImageIndex = row % imageList.length;
+                    const img = imageList[rowImageIndex];
+                    const rotation = rotations[row]?.[col] || 0;
+                    if (!img) return null;
+                    const aspectRatio = img.width / img.height;
+                    let targetWidth = cellWidth;
+                    let targetHeight = cellHeight;
+                    if (aspectRatio > 1) {
+                      targetHeight = cellWidth / aspectRatio;
+                    } else {
+                      targetWidth = cellHeight * aspectRatio;
+                    }
+                    return (
+                      <KonvaImage
+                        key={`${row}-${col}`}
+                        image={img}
+                        x={col * cellWidth + cellWidth / 2}
+                        y={row * cellHeight + cellHeight / 2}
+                        offsetX={targetWidth / 2}
+                        offsetY={targetHeight / 2}
+                        rotation={rotation}
+                        width={targetWidth}
+                        height={targetHeight}
+                      />
+                    );
+                  })
+                )}
+              </Layer>
+            </Stage>
+          </div>
+        </div>
+
+        {/* 右側：設定項目 */}
+        <div style={{ flex: 1 }}>
+          <div className="input-group">
+            <label>行数：<input type="number" value={rows} onChange={(e) => setRows(Number(e.target.value))} /></label>
+            <label>列数：<input type="number" value={cols} onChange={(e) => setCols(Number(e.target.value))} /></label>
+            <label>幅(px)：<input type="number" value={canvasWidth} onChange={(e) => setCanvasWidth(Number(e.target.value))} /></label>
+            <label>高さ(px)：<input type="number" value={canvasHeight} onChange={(e) => setCanvasHeight(Number(e.target.value))} /></label>
+            <label>DPI：<input type="number" value={dpi} onChange={(e) => setDpi(Number(e.target.value))} /></label>
+            <label>背景色：<input type="color" value={backgroundColor} disabled={transparent} onChange={(e) => setBackgroundColor(e.target.value)} /></label>
+            <label><input type="checkbox" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} /> 背景透過</label>
+            {[0, 1, 2, 3].map((i) => (
+              <label key={i}>画像{i + 1}：<input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, i)} /></label>
+            ))}
+          </div>
+        </div>
       </div>
-
-      <Stage ref={stageRef} width={canvasWidth} height={canvasHeight} pixelRatio={dpi / 72}>
-        <Layer>
-          {!transparent && (<Rect x={0} y={0} width={canvasWidth} height={canvasHeight} fill={backgroundColor} />)}
-
-          {[...Array(rows)].map((_, row) =>
-            [...Array(cols)].map((_, col) => {
-              const isEvenRow = row % 2 === 0;
-              const isEvenCol = col % 2 === 0;
-              const shouldDraw = isEvenRow === isEvenCol;
-              if (!shouldDraw || imageList.length === 0) return null;
-              const rowImageIndex = row % imageList.length;
-              const img = imageList[rowImageIndex];
-              const rotation = rotations[row]?.[col] || 0;
-              if (!img) return null;
-              const aspectRatio = img.width / img.height;
-              let targetWidth = cellWidth;
-              let targetHeight = cellHeight;
-              if (aspectRatio > 1) {
-                targetHeight = cellWidth / aspectRatio;
-              } else {
-                targetWidth = cellHeight * aspectRatio;
-              }
-              return (
-                <KonvaImage
-                  key={`${row}-${col}`}
-                  image={img}
-                  x={col * cellWidth + cellWidth / 2}
-                  y={row * cellHeight + cellHeight / 2}
-                  offsetX={targetWidth / 2}
-                  offsetY={targetHeight / 2}
-                  rotation={rotation}
-                  width={targetWidth}
-                  height={targetHeight}
-                />
-
-              );
-            })
-          )}
-        </Layer>
-      </Stage>
     </div>
   );
 };
 
-export default PatternImageTool; 
+export default PatternImageTool;
