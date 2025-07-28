@@ -1,10 +1,9 @@
-import React from "react";
+// ✅ こうすればOK！
 import PatternImageTool from "./PatternImageTool";
 
-const App: React.FC = () => {
+const App = () => {
   return (
-    <div>
-      <h1 className="title">Pattern Image Tool</h1>
+    <div className="min-h-screen bg-gray-100 p-4 flex">
       <PatternImageTool />
     </div>
   );
