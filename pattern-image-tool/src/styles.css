@@ -87,3 +87,16 @@ select, input[type="number"], input[type="color"], input[type="file"] {
   padding: 1rem;
   overflow: auto;
 }
+
+.preview-pane {
+  width: 100%;
+  max-width: 600px;
+  aspect-ratio: 1 / 1; /* 正方形を維持 */
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  background-color: white;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}

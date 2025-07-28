@@ -40,22 +40,13 @@ const PatternImageTool: React.FC = () => {
   const [canvasWidth, setCanvasWidth] = useState(720);
   const [canvasHeight, setCanvasHeight] = useState(720);
   const [dpi, setDpi] = useState(72);
-  const [presets, setPresets] = useState<number[][]>(defaultPresets);
+  const [presets, setPresets] = useState<number[][]>([...defaultPresets]);
   const [selectedPresetIndex, setSelectedPresetIndex] = useState<number | null>(null);
 
-  const cellWidth = canvasWidth / cols;
-  const cellHeight = canvasHeight / rows;
-
   const generateRandomRotations = (): number[][] => {
-    const newRotations: number[][] = [];
-    for (let row = 0; row < rows; row++) {
-      const rowRot: number[] = [];
-      for (let col = 0; col < cols; col++) {
-        rowRot.push(getRandomRotation());
-      }
-      newRotations.push(rowRot);
-    }
-    return newRotations;
+    return Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => getRandomRotation())
+    );
   };
 
   useEffect(() => {
@@ -65,14 +56,23 @@ const PatternImageTool: React.FC = () => {
   useEffect(() => {
     const stored = localStorage.getItem("pattern_presets");
     if (stored) {
-      const parsed = JSON.parse(stored);
-      setPresets([...defaultPresets, ...parsed]);
+      try {
+        const parsed = JSON.parse(stored);
+        setPresets([...defaultPresets, ...parsed]);
+      } catch {
+        setPresets([...defaultPresets]);
+      }
+    } else {
+      setPresets([...defaultPresets]);
     }
   }, []);
 
   const savePreset = () => {
     const newPreset = [rows, cols, canvasWidth, canvasHeight];
-    const updated = [...presets, newPreset];
+    const customPresets = presets.filter(
+      p => !defaultPresets.some(dp => JSON.stringify(dp) === JSON.stringify(p))
+    );
+    const updated = [...defaultPresets, ...customPresets, newPreset];
     setPresets(updated);
     localStorage.setItem(
       "pattern_presets",
@@ -82,11 +82,11 @@ const PatternImageTool: React.FC = () => {
 
   const deletePreset = (index: number) => {
     if (index < defaultPresets.length) return;
-    const updated = presets.filter((_, i) => i !== index);
-    setPresets(updated);
+    const customPresets = presets.filter((_, i) => i !== index);
+    setPresets([...defaultPresets, ...customPresets.filter(p => !defaultPresets.some(dp => JSON.stringify(dp) === JSON.stringify(p)))]);
     localStorage.setItem(
       "pattern_presets",
-      JSON.stringify(updated.filter(p => !defaultPresets.some(dp => JSON.stringify(dp) === JSON.stringify(p))))
+      JSON.stringify(customPresets.filter(p => !defaultPresets.some(dp => JSON.stringify(dp) === JSON.stringify(p))))
     );
     setSelectedPresetIndex(null);
   };
@@ -114,11 +114,60 @@ const PatternImageTool: React.FC = () => {
     }
   };
 
+  const previewMaxSize = 600;
+  const scale = Math.min(previewMaxSize / canvasWidth, previewMaxSize / canvasHeight);
+  const scaledWidth = canvasWidth * scale;
+  const scaledHeight = canvasHeight * scale;
+  const cellWidth = canvasWidth / cols;
+  const cellHeight = canvasHeight / rows;
+
   return (
     <div className="app-wrapper">
       <h2 className="app-title">画像パターン生成ツール</h2>
       <div className="container">
-        {/* 左側：プリセット + プレビュー */}
+        <div className="preview-pane" style={{ width: scaledWidth, height: scaledHeight }}>
+          <Stage ref={stageRef} width={scaledWidth} height={scaledHeight} scale={{ x: scale, y: scale }}>
+            <Layer>
+              {!transparent && (
+                <Rect x={0} y={0} width={canvasWidth} height={canvasHeight} fill={backgroundColor} />
+              )}
+              {[...Array(rows)].map((_, row) =>
+                [...Array(cols)].map((_, col) => {
+                  const isEvenRow = row % 2 === 0;
+                  const isEvenCol = col % 2 === 0;
+                  const shouldDraw = isEvenRow === isEvenCol;
+                  if (!shouldDraw || imageList.length === 0) return null;
+                  const rowImageIndex = row % imageList.length;
+                  const img = imageList[rowImageIndex];
+                  const rotation = rotations[row]?.[col] || 0;
+                  if (!img) return null;
+                  const aspectRatio = img.width / img.height;
+                  let targetWidth = cellWidth;
+                  let targetHeight = cellHeight;
+                  if (aspectRatio > 1) {
+                    targetHeight = cellWidth / aspectRatio;
+                  } else {
+                    targetWidth = cellHeight * aspectRatio;
+                  }
+                  return (
+                    <KonvaImage
+                      key={`${row}-${col}`}
+                      image={img}
+                      x={col * cellWidth + cellWidth / 2}
+                      y={row * cellHeight + cellHeight / 2}
+                      offsetX={targetWidth / 2}
+                      offsetY={targetHeight / 2}
+                      rotation={rotation}
+                      width={targetWidth}
+                      height={targetHeight}
+                    />
+                  );
+                })
+              )}
+            </Layer>
+          </Stage>
+        </div>
+
         <div style={{ flex: 1 }}>
           <div className="input-group">
             <select
@@ -150,55 +199,7 @@ const PatternImageTool: React.FC = () => {
               <button onClick={() => setRotations(generateRandomRotations())}>回転リセット</button>
               <button onClick={handleDownload}>PNG保存</button>
             </div>
-          </div>
 
-          <div className="canvas-area">
-            <Stage ref={stageRef} width={canvasWidth} height={canvasHeight} pixelRatio={dpi / 72}>
-              <Layer>
-                {!transparent && (
-                  <Rect x={0} y={0} width={canvasWidth} height={canvasHeight} fill={backgroundColor} />
-                )}
-                {[...Array(rows)].map((_, row) =>
-                  [...Array(cols)].map((_, col) => {
-                    const isEvenRow = row % 2 === 0;
-                    const isEvenCol = col % 2 === 0;
-                    const shouldDraw = isEvenRow === isEvenCol;
-                    if (!shouldDraw || imageList.length === 0) return null;
-                    const rowImageIndex = row % imageList.length;
-                    const img = imageList[rowImageIndex];
-                    const rotation = rotations[row]?.[col] || 0;
-                    if (!img) return null;
-                    const aspectRatio = img.width / img.height;
-                    let targetWidth = cellWidth;
-                    let targetHeight = cellHeight;
-                    if (aspectRatio > 1) {
-                      targetHeight = cellWidth / aspectRatio;
-                    } else {
-                      targetWidth = cellHeight * aspectRatio;
-                    }
-                    return (
-                      <KonvaImage
-                        key={`${row}-${col}`}
-                        image={img}
-                        x={col * cellWidth + cellWidth / 2}
-                        y={row * cellHeight + cellHeight / 2}
-                        offsetX={targetWidth / 2}
-                        offsetY={targetHeight / 2}
-                        rotation={rotation}
-                        width={targetWidth}
-                        height={targetHeight}
-                      />
-                    );
-                  })
-                )}
-              </Layer>
-            </Stage>
-          </div>
-        </div>
-
-        {/* 右側：設定項目 */}
-        <div style={{ flex: 1 }}>
-          <div className="input-group">
             <label>行数：<input type="number" value={rows} onChange={(e) => setRows(Number(e.target.value))} /></label>
             <label>列数：<input type="number" value={cols} onChange={(e) => setCols(Number(e.target.value))} /></label>
             <label>幅(px)：<input type="number" value={canvasWidth} onChange={(e) => setCanvasWidth(Number(e.target.value))} /></label>
