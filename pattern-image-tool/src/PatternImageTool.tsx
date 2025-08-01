@@ -34,8 +34,6 @@ const PatternImageTool: React.FC = () => {
   const stageRef = useRef<Konva.Stage>(null);
   const [imageList, setImageList] = useState<HTMLImageElement[]>([]);
   const [rotations, setRotations] = useState<number[][]>([]);
-  const [backgroundColor, setBackgroundColor] = useState("#ffffff");
-  const [transparent, setTransparent] = useState(false);
   const [rows, setRows] = useState(9);
   const [cols, setCols] = useState(9);
   const [canvasWidth, setCanvasWidth] = useState(720);
@@ -158,7 +156,6 @@ const PatternImageTool: React.FC = () => {
           <div className="mt-4">
             <Stage ref={stageRef} width={canvasWidth} height={canvasHeight} pixelRatio={dpi / 72} className="bg-gray-200 rounded-md">
               <Layer>
-                {!transparent && (<Rect x={0} y={0} width={canvasWidth} height={canvasHeight} fill={backgroundColor} />)}
                 {[...Array(rows)].map((_, row) =>
                   [...Array(cols)].map((_, col) => {
                     if (imageList.length === 0) {
@@ -224,10 +221,7 @@ const PatternImageTool: React.FC = () => {
             <label className="block">幅(px): <input type="number" value={canvasWidth} onChange={(e) => setCanvasWidth(Math.max(1, parseInt(e.target.value) || 1))} className="border p-2 rounded-md w-full" /></label>
             <label className="block">高さ(px): <input type="number" value={canvasHeight} onChange={(e) => setCanvasHeight(Math.max(1, parseInt(e.target.value) || 1))} className="border p-2 rounded-md w-full" /></label>
             <label className="block">DPI: <input type="number" value={dpi} onChange={(e) => setDpi(Math.max(1, parseInt(e.target.value) || 1))} className="border p-2 rounded-md w-full" /></label>
-            <div className="flex items-center gap-4">
-              <label className="block">背景色: <input type="color" value={backgroundColor} disabled={transparent} onChange={(e) => setBackgroundColor(e.target.value)} /></label>
-              <label className="flex items-center"><input type="checkbox" checked={transparent} onChange={(e) => setTransparent(e.target.checked)} className="mr-2" /> 背景透過</label>
-            </div>
+            
             <hr />
             <div className="flex flex-col gap-2">
               <button onClick={() => setRotations(generateRandomRotations())} className="px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600">回転リセット</button>
